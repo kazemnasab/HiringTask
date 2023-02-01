@@ -20,9 +20,10 @@ while ((line = reader.ReadLine()) != null)
 CurrencyConverter currencyConverter = new CurrencyConverter();
 currencyConverter.UpdateConfiguration(tuples);
 
-double cmp = currencyConverter.Convert("H", "H", 100);
+double cmp = currencyConverter.Convert("Z", "H", 100);
 if(double.IsNaN(cmp))
     Console.WriteLine("Relation not exist");
     else
 Console.WriteLine("Convert: {0}", cmp);
+
 Console.ReadLine();

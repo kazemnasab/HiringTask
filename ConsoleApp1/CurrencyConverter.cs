@@ -9,7 +9,6 @@ namespace ConsoleApp1
 {
     interface ICurrencyConverter
     {
-        bool Lock { set; get; }
         Hashtable Currencies { set; get; }
         /// <summary>
         /// Clears any prior configuration.
@@ -27,7 +26,7 @@ namespace ConsoleApp1
     internal class CurrencyConverter: ICurrencyConverter
     {
 
-        public bool Lock { get; set; } = false;
+        static readonly object Identity = new object();
         public Hashtable Currencies { get; set; } = new Hashtable();
 
         /// <summary>
@@ -35,7 +34,6 @@ namespace ConsoleApp1
         /// </summary>
         public void ClearConfiguration() {
             this.Currencies.Clear();
-            this.Lock = false;
         }
 
         /// <summary>
@@ -62,52 +60,42 @@ namespace ConsoleApp1
         /// </summary>
         public double Convert(string fromCurrency, string toCurrency, double amount)
         {
-            while (this.Lock) ;
-            this.Lock = true;
-            foreach (DictionaryEntry currency in Currencies)
-                (currency.Value as Currency).Computed = 0;
-            var from = Currencies[fromCurrency] as Currency;
-            var to = Currencies[toCurrency] as Currency;
-            if (from == null && to == null)
+            lock (Identity)
             {
-                this.Lock = false;
+                foreach (DictionaryEntry currency in Currencies)
+                    (currency.Value as Currency).Computed = 0;
+                var from = Currencies[fromCurrency] as Currency;
+                var to = Currencies[toCurrency] as Currency;
+                if (from == null && to == null)
+                    return double.NaN;
+                if (from == to)
+                    return 1;
+                Queue<Currency> queue = new Queue<Currency>();
+                from.Computed = 1;
+                queue.Enqueue(from);
+                Currency current;
+                while (true)
+                {
+                    if (queue.Count == 0)
+                        return double.NaN;
+                    current = queue.Dequeue();
+                    foreach (var rate in current.Rates.Where(m => m.Currency.Computed == 0))
+                    {
+                        rate.Currency.Computed = current.Computed * rate.Rate;
+                        if (rate.Currency.Sku == to.Sku)
+                        {
+                            if (current.Sku != from.Sku)
+                            {
+                                from.Rates.Add(new CurrencyRate(current, current.Computed));
+                                to.Rates.Add(new CurrencyRate(from, 1 / current.Computed));
+                            }
+                            return rate.Currency.Computed * amount;
+                        }
+                        queue.Enqueue(rate.Currency);
+                    }
+                }
                 return double.NaN;
             }
-            if (from == to)
-            {
-                this.Lock = false;
-                return 1;
-            }
-            Queue<Currency> queue = new Queue<Currency>();
-            from.Computed = 1;
-            queue.Enqueue(from);
-            Currency current;
-            while (true)
-            {
-                if (queue.Count == 0)
-                {
-                    this.Lock = false;
-                    return double.NaN;
-                }
-                current = queue.Dequeue();
-                foreach (var rate in current.Rates.Where(m => m.Currency.Computed == 0))
-                {
-                    rate.Currency.Computed = current.Computed * rate.Rate;
-                    if (rate.Currency.Sku == to.Sku)
-                    {
-                        if (current.Sku != from.Sku)
-                        {
-                            from.Rates.Add(new CurrencyRate(current, current.Computed));
-                            to.Rates.Add(new CurrencyRate(from, 1 / current.Computed));
-                        }
-                        this.Lock = false;
-                        return rate.Currency.Computed * amount;
-                    }
-                    queue.Enqueue(rate.Currency);
-                }
-            }
-            this.Lock = false;
-            return double.NaN;
         }
     }
 }
